@@ -1680,18 +1680,9 @@ bool Mgen::OnCommand(Mgen::Command cmd, const char* arg, bool override)
       }
       
     case INTERFACE:
-    {
       SetDefaultMulticastInterface(arg, override);
-
-      ProtoAddress tempAddr;
-        if (arg && tempAddr.ResolveFromString(arg))
-        {
-            // 有効なIPアドレスなら、hostaddr表示用のアドレスとしても設定する
-            SetHostAddress(tempAddr);
-        }
-
       break;
-    }
+
     case DF:
     {
         FragmentationStatus df = DF_DEFAULT;
