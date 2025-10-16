@@ -670,7 +670,7 @@ bool MgenSocketTransport::SetRxBufferSize(unsigned int bufferSize)
 bool MgenSocketTransport::Open(ProtoAddress::Type addrType, bool bindOnOpen)
 {
     if (socket.IsOpen())
-    {        
+    {
         if (socket.GetAddressType() != addrType)
             DMSG(0, "MgenTransport::Open() Warning: socket address type mismatch\n");
 
@@ -687,26 +687,40 @@ bool MgenSocketTransport::Open(ProtoAddress::Type addrType, bool bindOnOpen)
     {
         if (!socket.Open(srcPort, addrType, false))
         {
-            // SetLoopback asserts that the socket is open
-            //        socket.SetLoopback(false);  //  by default
             DMSG(0, "MgenTransport::Open() Error: socket open error %s srcPort %d\n",GetErrorString(),srcPort);
             return false;
         }
-        else
+
+        // 変更箇所
+        ProtoAddress localAddr;
+        bool addrIsSet = false;
+        if (('\0' != interface_name[0]) && localAddr.ResolveFromString(interface_name))
         {
-            // We want to set socket resuse so multiple processes
-            // can listen to a common multicast group.  Note that
-            // kernel socket selection for reused unicast sockets 
-            // is undefined.
-            
-            if (mgen.GetReuse())
-                socket.SetReuse(true);
-            if (bindOnOpen)
-                socket.Bind(srcPort);
+            addrIsSet = true;
         }
+
+        if (addrIsSet)
+        {
+            // IPアドレスが指定されていれば、そのアドレスにソケットをbindする
+            // (正しい引数 socket.Bind(port, &address) を使用)
+            if (!socket.Bind(srcPort, &localAddr))
+            {
+                DMSG(0, "MgenTransport::Open() Error: socket bind error for source address %s\n", interface_name);
+                socket.Close();
+                return false;
+            }
+        }
+        else if (bindOnOpen)
+        {
+            // IPアドレス指定がなく、bindOnOpenがtrueの場合 (主に受信ソケット用)
+            socket.Bind(srcPort);
+        }
+        // ★★★★★★★★★★★★★★★★★ 1つ目の変更箇所 (ここまで) ★★★★★★★★★★★★★★★★★
+        
+        if (mgen.GetReuse())
+            socket.SetReuse(true);
     }
     
-    // Reset src port in case it was os generated 
     srcPort = GetSocketPort();
     
     if (tx_buffer)
@@ -727,8 +741,12 @@ bool MgenSocketTransport::Open(ProtoAddress::Type addrType, bool bindOnOpen)
     if (df != DF_DEFAULT)
         socket.SetFragmentation(df);
 
-    if ('\0' != interface_name[0])
-      socket.SetMulticastInterface(interface_name);
+    // ★★★★★★★★★★★★★★★★★ 2つ目の変更箇所 (ここから) ★★★★★★★★★★★★★★★★★
+    ProtoAddress tempAddrCheck;
+    // interface_nameがIPアドレスでなかった場合のみ、マルチキャストインターフェースとして設定する
+    if (('\0' != interface_name[0]) && !tempAddrCheck.ResolveFromString(interface_name))
+        socket.SetMulticastInterface(interface_name);
+    // ★★★★★★★★★★★★★★★★★ 2つ目の変更箇所 (ここまで) ★★★★★★★★★★★★★★★★★
 
     reference_count++;
     return true;
